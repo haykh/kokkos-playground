@@ -1,0 +1,11 @@
+{
+  "files.associations": {
+    "*.cmake": "cmake",
+    "*.h.in": "cpp",
+    "iostream": "cpp"
+  },
+  "cmake.configureArgs": [
+    "-D Kokkos_ENABLE_CUDA=ON"
+  ],
+  "C_Cpp.errorSquiggles": "disabled",
+}
