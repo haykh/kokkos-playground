@@ -3,26 +3,51 @@
 #include <chrono>
 #include <iostream>
 
+namespace math = Kokkos;
+
 struct Particles {
   const std::size_t     npart;
   Kokkos::View<double*> x;
 
   Particles(const std::size_t& _npart) : npart { _npart }, x { "x", _npart } {}
+
+  void Init() {
+    auto _x = x;
+    Kokkos::parallel_for(
+      "init", npart, KOKKOS_LAMBDA(const std::size_t p) { _x(p) = (double)p / (double)npart; });
+  }
 };
+
+// template <typename T>
+// class myallocator {
+// public:
+// using value_type = T;
+
+// T* allocate(std::size_t n) {
+// T* ptr;
+// Kokkos::malloc(&ptr, n * sizeof(T));
+// return ptr;
+//}
+
+// void deallocate(T* ptr, std::size_t n) {
+// Kokkos::free(ptr);
+//}
+//};
 
 auto main(int argc, char* argv[]) -> int {
   Kokkos::initialize(argc, argv);
   try {
-    using ExecutionSpace = Kokkos::DefaultExecutionSpace;
-
-    int nblocks          = 0;
-    int nthreads         = 1024;    // ExecutionSpace::execution_space::concurrency();
+    int                    nblocks  = 0;
+    int                    nthreads = 1024;
+    // ExecutionSpace::execution_space::concurrency();
     // int max_threads = std::thread::hardware_concurrency();
 
     std::vector<Particles> species {
       Particles(100000),  Particles(1000000), Particles(10000),
       Particles(1000000), Particles(100000),  Particles(1000000)
     };
+
+    Kokkos::View<double*> EB("EB", 1000);
 
     // printf("max_threads = %d\n", max_threads);
     //  define number of threads in a block
@@ -49,10 +74,10 @@ auto main(int argc, char* argv[]) -> int {
     }
     Kokkos::deep_copy(starting_index, starting_index_host);
 
-    typedef Kokkos::TeamPolicy<ExecutionSpace>::member_type member_type;
-    Kokkos::TeamPolicy                                      policy(nblocks, nthreads);
+    typedef Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>::member_type member_type;
+    Kokkos::TeamPolicy policy(nblocks, nthreads);
 
-    auto time1 = std::chrono::high_resolution_clock::now();
+    auto               time1 = std::chrono::high_resolution_clock::now();
     Kokkos::parallel_for(
       policy, KOKKOS_LAMBDA(member_type team_member) {
         int member_rank = team_member.league_rank();
@@ -66,7 +91,10 @@ auto main(int argc, char* argv[]) -> int {
             int particle_index = starting_index(block_index, 1);
 
             if (particle_index < species[species_index].npart) {
-              species[species_index].x(particle_index) += 0.01;
+              const auto x_coord  = species[species_index].x(particle_index);
+              const auto eb_ind   = (int)(1000 * x_coord);
+              const auto EB_field = EB(eb_ind);
+              species[species_index].x(particle_index) += 0.01 * EB_field + math::sin(x_coord);
             }
           }
         });
@@ -83,8 +111,6 @@ auto main(int argc, char* argv[]) -> int {
     Kokkos::fence();
     auto time4 = std::chrono::high_resolution_clock::now();
     printf("time = %f\n", std::chrono::duration<double>(time4 - time3).count());
-    // Kokkos::parallel_for(Kokkos::MDRangePolicy<DevExecutionSpace, Kokkos::Rank<2,
-    // Iterate::Right>>({0, 0}, {species.size(), }))
   } catch (std::exception& e) {
     std::cerr << "Exception caught: " << e.what() << '\n';
     Kokkos::finalize();
