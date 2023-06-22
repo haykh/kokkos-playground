@@ -6,16 +6,16 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=500G
 #SBATCH --time=00:10:00
-##SBATCH --reservation=openhack
+#SBATCH --reservation=openhack
 #SBATCH --output main.output
 
-module purge
+# module purge
 module use --append /home/hakobyan/.modules
-module load cudatoolkit/12.0
-module load gcc-toolset/10 
-module load hdf5/gcc-toolset-10/1.10.6 
-module load adios2/gcc-10/hdf5-1.10.6 
-module load kokkos/cuda-12/ampere-80
+# module load cudatoolkit/12.0
+# module load gcc-toolset/10 
+# module load hdf5/gcc-toolset-10/1.10.6 
+# module load adios2/gcc-10/hdf5-1.10.6 
+# module load kokkos/cuda-12/ampere-80
 module load entity/gpu-ampere-80
 
 
