@@ -1,125 +1,67 @@
-#include <Kokkos_Core.hpp>
-#include <stdio.h>
+#include <adios2.h>
 
-#include <chrono>
 #include <iostream>
-#include <numeric>
+#include <vector>
 
-#ifdef ADIOS2_ENABLED
-#  include <adios2.h>
-#  include <adios2/cxx11/KokkosView.h>
+int main(int argc, char* argv[]) {
+#ifndef ADIOS2_USE_MPI
+  throw std::runtime_error("This example requires MPI");
 #endif
 
-#ifdef MPI_ENABLED
-#  include <mpi.h>
-#endif
+  int rank  = 0;
+  int nproc = 1;
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+  const int NSTEPS = 5;
+  srand(rank * 32767);
 
-namespace math = Kokkos;
+  adios2::ADIOS       adios(MPI_COMM_WORLD);
 
-auto Initialize(int argc, char* argv[]) -> void;
-auto Finalize() -> void;
+  const size_t        Nglobal = 6;
+  std::vector<double> v0(Nglobal);
 
-#ifdef ADIOS2_ENABLED
-auto main(int argc, char* argv[]) -> int {
-  Initialize(argc, argv);
+  unsigned int        Nelems;
+  std::vector<double> v2;
+
   try {
-    int mpi_rank = 0, mpi_size = 1;
-#  ifndef MPI_ENABLED
-    adios2::ADIOS adios;
-#  else
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-    adios2::ADIOS adios(MPI_COMM_WORLD);
-#  endif
-
-    auto io = adios.DeclareIO("Test-Output");
+    adios2::IO io = adios.DeclareIO("Output");
     io.SetEngine("HDF5");
+    io.SetParameters({
+      {"verbose", "4"}
+    });
 
-    const auto maxptl = 100000;
-    const auto nsteps = 10;
+    adios2::Variable<double> varV0 = io.DefineVariable<double>("v0", {}, {}, { Nglobal });
+    adios2::Variable<double> varV1
+      = io.DefineVariable<double>("v1", { nproc * Nglobal }, { rank * Nglobal }, { Nglobal });
+    adios2::Variable<double> varV2
+      = io.DefineVariable<double>("v2", {}, {}, { adios2::UnknownDim });
 
-    auto       myarr1 = Kokkos::View<double*>("myarr1", maxptl);
+    adios2::Engine writer = io.Open("localArray.h5", adios2::Mode::Write);
 
-    io.DefineVariable<double>("myarr1", {}, {}, { adios2::UnknownDim });
-
-    auto writer       = io.Open("test.h5", adios2::Mode::Write);
-
-    // adios.EnterComputationBlock();
-    for (auto t { 0 }; t < nsteps; ++t) {
-      if (mpi_rank == 0) {
-        printf("Timestep #%d\n\n", t);
-      }
-      const auto nprt = (std::size_t)(100 * (t + 1) * (mpi_rank + 1));
-      if (nprt > maxptl) {
-        throw std::runtime_error("Too many particles");
-      }
-      Kokkos::parallel_for(
-        "fill_myarr1", nprt, KOKKOS_LAMBDA(const int i) {
-          myarr1(i) += static_cast<double>(i);
-        });
-      // adios.ExitComputationBlock();
+    for (int step = 0; step < NSTEPS; step++) {
       writer.BeginStep();
-
-#  ifdef MPI_ENABLED
-      std::vector<std::size_t> sizes_g(mpi_size), offsets(mpi_size);
-      MPI_Allgather(&nprt, 1, MPI_DOUBLE, sizes_g.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
-      const auto total_nprt = std::accumulate(sizes_g.begin(), sizes_g.end(),
-      (std::size_t)0); offsets[0]            = 0; for (auto i { 1 }; i < sizes_g.size();
-      ++i) {
-        offsets[i] = offsets[i - 1] + sizes_g[i - 1];
+      for (size_t i = 0; i < Nglobal; i++) {
+        v0[i] = rank * 1.0 + step * 0.1;
       }
-      const auto offset = offsets[mpi_rank];
-#  else     // not MPI_ENABLED
-      const auto offset     = (std::size_t)0;
-      const auto total_nprt = nprt;
-#  endif    // MPI_ENABLED
+      writer.Put<double>(varV0, v0.data());
+      writer.Put<double>(varV1, v0.data());
 
-      auto myarr1_slice = Kokkos::View<double*>("myarr1_slice", nprt);
-      auto slice        = std::make_pair((std::size_t)0, (std::size_t)nprt);
-      Kokkos::deep_copy(myarr1_slice, Kokkos::subview(myarr1, slice));
-      printf(
-        "#%d: nprt = %d, offset = %d, total_nprt = %d\n", mpi_rank, nprt, offset,
-        total_nprt);
-
-      auto var = io.InquireVariable<double>("myarr1");
-      var.SetSelection({ {}, { nprt } });
-      writer.Put<double>(var, myarr1_slice, adios2::Mode::Sync);
+      Nelems = rand() % 6 + 5;
+      v2.reserve(Nelems);
+      for (size_t i = 0; i < Nelems; i++) {
+        v2[i] = rank * 1.0 + step * 0.1;
+      }
+      varV2.SetSelection(adios2::Box<adios2::Dims>({}, { Nelems }));
+      writer.Put<double>(varV2, v2.data());
 
       writer.EndStep();
-      // adios.EnterComputationBlock();
-      if (mpi_rank == 0) {
-        printf("---\n\n");
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
     }
-    std::cout << "Closing file\n";
+
     writer.Close();
-
   } catch (std::exception& e) {
-    std::cerr << "Exception caught: " << e.what() << '\n';
-    Finalize();
-    return 1;
+    std::cout << "ERROR: ADIOS2 exception: " << e.what() << std::endl;
   }
-  Finalize();
-  return 0;
-}
-#else
-auto main() -> int {
-  std::cout << "ADIOS2 is not enabled.\n";
-  return 0;
-}
-#endif
-
-auto Initialize(int argc, char* argv[]) -> void {
-  Kokkos::initialize(argc, argv);
-#ifdef MPI_ENABLED
-  MPI_Init(&argc, &argv);
-#endif
-}
-
-auto Finalize() -> void {
-#ifdef MPI_ENABLED
   MPI_Finalize();
-#endif
-  Kokkos::finalize();
+  return 0;
 }
