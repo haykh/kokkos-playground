@@ -36,3 +36,5 @@ temp/
 bin/
 
 .vscode/settings.json
+
+*.h5
