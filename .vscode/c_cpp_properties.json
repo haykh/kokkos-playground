@@ -1,15 +1,68 @@
 {
+  "env": {
+    "myDefaultIncludePath": [
+      "${workspaceFolder}/src/"
+    ],
+    "stellarKokkosDir": "/home/hakobyan/opt/kokkos/mpi/cuda/volta70/skx",
+    "stellarAdios2Dir": "/home/hakobyan/opt/adios2/mpi/cuda/volta70/skx",
+    "stellarMPIDir": "/home/hakobyan/opt/ompi/",
+    "myDefaultDefines": [
+      "MPI_ENABLED",
+      "ADIOS2_ENABLED"
+    ]
+  },
   "configurations": [
     {
-      "name": "linux",
+      "name": "stellar",
       "intelliSenseMode": "linux-gcc-x64",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${myDefaultIncludePath}",
+        "${stellarKokkosDir}/include/",
+        "${stellarAdios2Dir}/include/",
+        "${stellarMPIDir}/include/",
+        "/usr/local/cuda/include/"
+      ],
+      "defines": [
+        "${myDefaultDefines}",
+        // "${grpicDefines}",
+        "${picDefines}",
+        "AccelExeSpace=Kokkos::Cuda",
+        "AccelMemSpace=Kokkos::CudaSpace"
+      ],
+      "compilerPath": "/opt/rh/gcc-toolset-10/root/usr/bin/g++",
+      "cStandard": "c17",
+      "cppStandard": "c++17"
+    },
+    {
+      "name": "wsl",
+      "intelliSenseMode": "linux-gcc-x64",
+      "includePath": [
+        "${myDefaultIncludePath}",
+        "/usr/local/cuda/include/"
+      ],
+      "defines": [
+        "${myDefaultDefines}",
+        "AccelExeSpace=Kokkos::Cuda",
+        "AccelMemSpace=Kokkos::CudaSpace"
       ],
       "compilerPath": "/usr/bin/g++",
       "cStandard": "c17",
-      "cppStandard": "c++17",
-      "configurationProvider": "ms-vscode.cmake-tools"
+      "cppStandard": "c++17"
+    },
+    {
+      "name": "mac",
+      "intelliSenseMode": "macos-gcc-x64",
+      "includePath": [
+        "${myDefaultIncludePath}"
+      ],
+      "defines": [
+        "${myDefaultDefines}",
+        "AccelExeSpace=Kokkos::OpenMP",
+        "AccelMemSpace=Kokkos::HostSpace"
+      ],
+      "compilerPath": "/usr/local/bin/g++-10",
+      "cStandard": "c17",
+      "cppStandard": "c++17"
     }
   ],
   "version": 4

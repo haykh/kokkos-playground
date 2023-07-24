@@ -34,3 +34,5 @@
 build/
 temp/
 bin/
+
+.vscode/settings.json
