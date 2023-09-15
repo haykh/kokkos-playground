@@ -5,7 +5,7 @@
     ],
     "stellarKokkosDir": "/home/hakobyan/opt/kokkos/mpi/skx",
     "stellarAdios2Dir": "/home/hakobyan/opt/adios2/mpi/skx",
-    "stellarMPIDir": "/home/hakobyan/opt/ompi/",
+    "stellarMPIDir": "/home/hakobyan/opt/ompi/cuda",
     "myDefaultDefines": [
       "MPI_ENABLED",
       "ADIOS2_ENABLED",
@@ -27,33 +27,6 @@
         "${myDefaultDefines}"
       ],
       "compilerPath": "/opt/rh/gcc-toolset-10/root/usr/bin/g++",
-      "cStandard": "c17",
-      "cppStandard": "c++17"
-    },
-    {
-      "name": "wsl",
-      "intelliSenseMode": "linux-gcc-x64",
-      "includePath": [
-        "${myDefaultIncludePath}",
-        "/usr/local/cuda/include/"
-      ],
-      "defines": [
-        "${myDefaultDefines}"
-      ],
-      "compilerPath": "/usr/bin/g++",
-      "cStandard": "c17",
-      "cppStandard": "c++17"
-    },
-    {
-      "name": "mac",
-      "intelliSenseMode": "macos-gcc-x64",
-      "includePath": [
-        "${myDefaultIncludePath}"
-      ],
-      "defines": [
-        "${myDefaultDefines}"
-      ],
-      "compilerPath": "/usr/local/bin/g++-10",
       "cStandard": "c17",
       "cppStandard": "c++17"
     }
