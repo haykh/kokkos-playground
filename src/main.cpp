@@ -1,19 +1,15 @@
-#include <Kokkos_Core.hpp>
-#include <stdio.h>
+#include "playground.hpp"
 
-#include <chrono>
-#include <iostream>
+#include <Kokkos_Core.hpp>
 
 #ifdef ADIOS2_ENABLED
-#  include <adios2.h>
-#  include <adios2/cxx11/KokkosView.h>
+  #include <adios2.h>
+  #include <adios2/cxx11/KokkosView.h>
 #endif
 
 #ifdef MPI_ENABLED
-#  include <mpi.h>
+  #include <mpi.h>
 #endif
-
-namespace math = Kokkos;
 
 auto Initialize(int argc, char* argv[]) -> void;
 auto Finalize() -> void;
@@ -21,11 +17,7 @@ auto Finalize() -> void;
 auto main(int argc, char* argv[]) -> int {
   Initialize(argc, argv);
   try {
-    int mpi_rank = 0, mpi_size = 1;
-#if defined(MPI_ENABLED)
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-#endif
+    Playground();
   } catch (std::exception& e) {
     std::cerr << "Exception caught: " << e.what() << '\n';
     Finalize();

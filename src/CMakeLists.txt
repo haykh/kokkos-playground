@@ -1,4 +1,4 @@
-add_executable(main.xc main.cpp)
+add_executable(main.xc main.cpp playground.cpp)
 target_link_libraries(main.xc Kokkos::kokkos)
 
 if(${adios2})
