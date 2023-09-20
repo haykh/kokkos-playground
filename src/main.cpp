@@ -2,12 +2,12 @@
 
 #include <Kokkos_Core.hpp>
 
-#ifdef ADIOS2_ENABLED
+#if defined(ADIOS2_ENABLED)
   #include <adios2.h>
   #include <adios2/cxx11/KokkosView.h>
 #endif
 
-#ifdef MPI_ENABLED
+#if defined(MPI_ENABLED)
   #include <mpi.h>
 #endif
 
@@ -29,13 +29,13 @@ auto main(int argc, char* argv[]) -> int {
 
 auto Initialize(int argc, char* argv[]) -> void {
   Kokkos::initialize(argc, argv);
-#ifdef MPI_ENABLED
+#if defined(MPI_ENABLED)
   MPI_Init(&argc, &argv);
 #endif
 }
 
 auto Finalize() -> void {
-#ifdef MPI_ENABLED
+#if defined(MPI_ENABLED)
   MPI_Finalize();
 #endif
   Kokkos::finalize();
