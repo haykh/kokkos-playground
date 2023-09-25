@@ -8,7 +8,14 @@ if(${Kokkos_ENABLE_CUDA})
 endif()
 
 set(CMAKE_CXX_EXTENSIONS OFF)
-find_package(Kokkos REQUIRED)
+# find_package(Kokkos REQUIRED)
+include(FetchContent)
+FetchContent_Declare(
+  Kokkos
+  GIT_REPOSITORY https://github.com/kokkos/kokkos.git
+  GIT_TAG master
+)
+FetchContent_MakeAvailable(Kokkos)
 
 if(${adios2})
   find_package(adios2 REQUIRED)

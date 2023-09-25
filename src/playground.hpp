@@ -23,7 +23,7 @@ inline constexpr float HALF  = 0.5f;
 inline constexpr float INV_2 = 0.5f;
 inline constexpr float INV_4 = 0.25f;
 
-enum tag : int {
+enum tag : short {
   dead  = 0,
   alive = 1,
 };
@@ -65,9 +65,6 @@ public:
 };
 
 class InitPrtls_kernel {
-  const std::size_t nx1;
-  const std::size_t nx2;
-
   Kokkos::View<int*>    i1;
   Kokkos::View<int*>    i2;
   Kokkos::View<float*>  dx1;
@@ -75,21 +72,24 @@ class InitPrtls_kernel {
   Kokkos::View<real_t*> ux1;
   Kokkos::View<real_t*> ux2;
   Kokkos::View<real_t*> ux3;
-  RandomNumberPool_t    random_pool;
+  Kokkos::View<short*>  tag;
+
+  const std::size_t  nx1;
+  const std::size_t  nx2;
+  RandomNumberPool_t random_pool;
 
 public:
-  InitPrtls_kernel(std::size_t           nx1,
-                   std::size_t           nx2,
-                   Kokkos::View<int*>    i1,
+  InitPrtls_kernel(Kokkos::View<int*>    i1,
                    Kokkos::View<int*>    i2,
                    Kokkos::View<float*>  dx1,
                    Kokkos::View<float*>  dx2,
                    Kokkos::View<real_t*> ux1,
                    Kokkos::View<real_t*> ux2,
                    Kokkos::View<real_t*> ux3,
+                   Kokkos::View<short*>  tag,
+                   std::size_t           nx1,
+                   std::size_t           nx2,
                    RandomNumberPool_t    random_pool) :
-    nx1 { nx1 },
-    nx2 { nx2 },
     i1 { i1 },
     i2 { i2 },
     dx1 { dx1 },
@@ -97,6 +97,9 @@ public:
     ux1 { ux1 },
     ux2 { ux2 },
     ux3 { ux3 },
+    tag { tag },
+    nx1 { nx1 },
+    nx2 { nx2 },
     random_pool { RandomSeed } {}
 
   KOKKOS_INLINE_FUNCTION
@@ -126,6 +129,10 @@ class Push_kernel {
   Kokkos::View<real_t*>      ux1;
   Kokkos::View<real_t*>      ux2;
   Kokkos::View<real_t*>      ux3;
+  Kokkos::View<short*>       tag;
+
+  const int nx1;
+  const int nx2;
 
 public:
   Push_kernel(std::size_t                ngh,
@@ -137,7 +144,10 @@ public:
               Kokkos::View<float*>       dx2,
               Kokkos::View<real_t*>      ux1,
               Kokkos::View<real_t*>      ux2,
-              Kokkos::View<real_t*>      ux3) :
+              Kokkos::View<real_t*>      ux3,
+              Kokkos::View<short*>       tag,
+              std::size_t                nx1,
+              std::size_t                nx2) :
     ngh { ngh },
     coeff { coeff },
     fld { fld },
@@ -147,116 +157,116 @@ public:
     dx2 { dx2 },
     ux1 { ux1 },
     ux2 { ux2 },
-    ux3 { ux3 } {}
-
-  KOKKOS_INLINE_FUNCTION
-  auto operator()(index_t p) const -> void {
-    {
-      const auto i1_ = i1(p) + static_cast<int>(ngh);
-      const auto i2_ = i2(p) + static_cast<int>(ngh);
-      real_t     c000, c100, c010, c110;
-
-      c000 = HALF * (fld(i1_, i2_, em::ex1) + fld(i1_ - 1, i2_, em::ex1));
-      c100 = HALF * (fld(i1_, i2_, em::ex1) + fld(i1_ + 1, i2_, em::ex1));
-      c010 = HALF * (fld(i1_, i2_ + 1, em::ex1) + fld(i1_ - 1, i2_ + 1, em::ex1));
-      c110 = HALF * (fld(i1_, i2_ + 1, em::ex1) + fld(i1_ + 1, i2_ + 1, em::ex1));
-      const auto ex1_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      c000 = HALF * (fld(i1_, i2_, em::ex2) + fld(i1_, i2_ - 1, em::ex2));
-      c100 = HALF * (fld(i1_ + 1, i2_, em::ex2) + fld(i1_ + 1, i2_ - 1, em::ex2));
-      c010 = HALF * (fld(i1_, i2_, em::ex2) + fld(i1_, i2_ + 1, em::ex2));
-      c110 = HALF * (fld(i1_ + 1, i2_, em::ex2) + fld(i1_ + 1, i2_ + 1, em::ex2));
-      const auto ex2_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      c000               = fld(i1_, i2_, em::ex3);
-      c100               = fld(i1_ + 1, i2_, em::ex3);
-      c010               = fld(i1_, i2_ + 1, em::ex3);
-      c110               = fld(i1_ + 1, i2_ + 1, em::ex3);
-      const auto ex3_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      c000 = HALF * (fld(i1_, i2_, em::bx1) + fld(i1_, i2_ - 1, em::bx1));
-      c100 = HALF * (fld(i1_ + 1, i2_, em::bx1) + fld(i1_ + 1, i2_ - 1, em::bx1));
-      c010 = HALF * (fld(i1_, i2_, em::bx1) + fld(i1_, i2_ + 1, em::bx1));
-      c110 = HALF * (fld(i1_ + 1, i2_, em::bx1) + fld(i1_ + 1, i2_ + 1, em::bx1));
-      const auto bx1_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      c000 = HALF * (fld(i1_ - 1, i2_, em::bx2) + fld(i1_, i2_, em::bx2));
-      c100 = HALF * (fld(i1_, i2_, em::bx2) + fld(i1_ + 1, i2_, em::bx2));
-      c010 = HALF * (fld(i1_ - 1, i2_ + 1, em::bx2) + fld(i1_, i2_ + 1, em::bx2));
-      c110 = HALF * (fld(i1_, i2_ + 1, em::bx2) + fld(i1_ + 1, i2_ + 1, em::bx2));
-      const auto bx2_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      c000 = INV_4 * (fld(i1_ - 1, i2_ - 1, em::bx3) + fld(i1_ - 1, i2_, em::bx3) +
-                      fld(i1_, i2_ - 1, em::bx3) + fld(i1_, i2_, em::bx3));
-      c100 = INV_4 * (fld(i1_, i2_ - 1, em::bx3) + fld(i1_, i2_, em::bx3) +
-                      fld(i1_ + 1, i2_ - 1, em::bx3) + fld(i1_ + 1, i2_, em::bx3));
-      c010 = INV_4 * (fld(i1_ - 1, i2_, em::bx3) + fld(i1_ - 1, i2_ + 1, em::bx3) +
-                      fld(i1_, i2_, em::bx3) + fld(i1_, i2_ + 1, em::bx3));
-      c110 = INV_4 * (fld(i1_, i2_, em::bx3) + fld(i1_, i2_ + 1, em::bx3) +
-                      fld(i1_ + 1, i2_, em::bx3) + fld(i1_ + 1, i2_ + 1, em::bx3));
-      const auto bx3_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
-                             (ONE - dx2(p)) +
-                           (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
-
-      ux1(p) += coeff * (ex1_int + ux2(p) * bx3_int - ux3(p) * bx2_int);
-      ux2(p) += coeff * (ex2_int + ux3(p) * bx1_int - ux1(p) * bx3_int);
-      ux3(p) += coeff * (ex3_int + ux1(p) * bx2_int - ux2(p) * bx1_int);
-    }
-    const auto inv_gamma = ONE / math::sqrt(ONE + ux1(p) * ux1(p) +
-                                            ux2(p) * ux2(p) + ux3(p) * ux3(p));
-    {
-      dx1(p) += static_cast<float>(coeff * ux1(p) * inv_gamma);
-      auto temp_i { static_cast<int>(dx1(p)) };
-      auto temp_r { math::fmax(SIGNf(dx1(p)) + temp_i, static_cast<float>(temp_i)) -
-                    static_cast<float>(1.0) };
-      temp_i = static_cast<int>(temp_r);
-      i1(p)  = i1(p) + temp_i;
-      dx1(p) = dx1(p) - temp_r;
-    }
-
-    {
-      dx2(p)      += static_cast<float>(coeff * ux2(p) * inv_gamma);
-      auto temp_i  = static_cast<int>(dx2(p));
-      auto temp_r = math::fmax(SIGNf(dx2(p)) + temp_i, static_cast<float>(temp_i)) -
-                    static_cast<float>(1.0);
-      temp_i = static_cast<int>(temp_r);
-      i2(p)  = i2(p) + temp_i;
-      dx2(p) = dx2(p) - temp_r;
-    }
-  }
-};
-
-class PrtlsBC_kernel {
-  const int nx1;
-  const int nx2;
-
-  Kokkos::View<int*> i1;
-  Kokkos::View<int*> i2;
-
-public:
-  PrtlsBC_kernel(std::size_t        nx1,
-                 std::size_t        nx2,
-                 Kokkos::View<int*> i1,
-                 Kokkos::View<int*> i2) :
+    ux3 { ux3 },
+    tag { tag },
     nx1 { (int)nx1 },
-    nx2 { (int)nx2 },
-    i1 { i1 },
-    i2 { i2 } {}
+    nx2 { (int)nx2 } {}
 
   KOKKOS_INLINE_FUNCTION
   auto operator()(index_t p) const -> void {
-    i1(p) = (i1(p) + nx1) % nx1;
-    i2(p) = (i2(p) + nx2) % nx2;
+    if (tag(p) == static_cast<short>(tag::alive)) {
+      {
+        const auto i1_ = i1(p) + static_cast<int>(ngh);
+        const auto i2_ = i2(p) + static_cast<int>(ngh);
+        real_t     c000, c100, c010, c110;
+
+        c000 = HALF * (fld(i1_, i2_, em::ex1) + fld(i1_ - 1, i2_, em::ex1));
+        c100 = HALF * (fld(i1_, i2_, em::ex1) + fld(i1_ + 1, i2_, em::ex1));
+        c010 = HALF *
+               (fld(i1_, i2_ + 1, em::ex1) + fld(i1_ - 1, i2_ + 1, em::ex1));
+        c110 = HALF *
+               (fld(i1_, i2_ + 1, em::ex1) + fld(i1_ + 1, i2_ + 1, em::ex1));
+        const auto ex1_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        c000 = HALF * (fld(i1_, i2_, em::ex2) + fld(i1_, i2_ - 1, em::ex2));
+        c100 = HALF *
+               (fld(i1_ + 1, i2_, em::ex2) + fld(i1_ + 1, i2_ - 1, em::ex2));
+        c010 = HALF * (fld(i1_, i2_, em::ex2) + fld(i1_, i2_ + 1, em::ex2));
+        c110 = HALF *
+               (fld(i1_ + 1, i2_, em::ex2) + fld(i1_ + 1, i2_ + 1, em::ex2));
+        const auto ex2_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        c000               = fld(i1_, i2_, em::ex3);
+        c100               = fld(i1_ + 1, i2_, em::ex3);
+        c010               = fld(i1_, i2_ + 1, em::ex3);
+        c110               = fld(i1_ + 1, i2_ + 1, em::ex3);
+        const auto ex3_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        c000 = HALF * (fld(i1_, i2_, em::bx1) + fld(i1_, i2_ - 1, em::bx1));
+        c100 = HALF *
+               (fld(i1_ + 1, i2_, em::bx1) + fld(i1_ + 1, i2_ - 1, em::bx1));
+        c010 = HALF * (fld(i1_, i2_, em::bx1) + fld(i1_, i2_ + 1, em::bx1));
+        c110 = HALF *
+               (fld(i1_ + 1, i2_, em::bx1) + fld(i1_ + 1, i2_ + 1, em::bx1));
+        const auto bx1_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        c000 = HALF * (fld(i1_ - 1, i2_, em::bx2) + fld(i1_, i2_, em::bx2));
+        c100 = HALF * (fld(i1_, i2_, em::bx2) + fld(i1_ + 1, i2_, em::bx2));
+        c010 = HALF *
+               (fld(i1_ - 1, i2_ + 1, em::bx2) + fld(i1_, i2_ + 1, em::bx2));
+        c110 = HALF *
+               (fld(i1_, i2_ + 1, em::bx2) + fld(i1_ + 1, i2_ + 1, em::bx2));
+        const auto bx2_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        c000 = INV_4 *
+               (fld(i1_ - 1, i2_ - 1, em::bx3) + fld(i1_ - 1, i2_, em::bx3) +
+                fld(i1_, i2_ - 1, em::bx3) + fld(i1_, i2_, em::bx3));
+        c100 = INV_4 *
+               (fld(i1_, i2_ - 1, em::bx3) + fld(i1_, i2_, em::bx3) +
+                fld(i1_ + 1, i2_ - 1, em::bx3) + fld(i1_ + 1, i2_, em::bx3));
+        c010 = INV_4 *
+               (fld(i1_ - 1, i2_, em::bx3) + fld(i1_ - 1, i2_ + 1, em::bx3) +
+                fld(i1_, i2_, em::bx3) + fld(i1_, i2_ + 1, em::bx3));
+        c110 = INV_4 *
+               (fld(i1_, i2_, em::bx3) + fld(i1_, i2_ + 1, em::bx3) +
+                fld(i1_ + 1, i2_, em::bx3) + fld(i1_ + 1, i2_ + 1, em::bx3));
+        const auto bx3_int = (c000 * (ONE - dx1(p)) + c100 * dx1(p)) *
+                               (ONE - dx2(p)) +
+                             (c010 * (ONE - dx1(p)) + c110 * dx1(p)) * dx2(p);
+
+        ux1(p) += coeff * (ex1_int + ux2(p) * bx3_int - ux3(p) * bx2_int);
+        ux2(p) += coeff * (ex2_int + ux3(p) * bx1_int - ux1(p) * bx3_int);
+        ux3(p) += coeff * (ex3_int + ux1(p) * bx2_int - ux2(p) * bx1_int);
+      }
+      const auto inv_gamma = ONE / math::sqrt(ONE + ux1(p) * ux1(p) +
+                                              ux2(p) * ux2(p) + ux3(p) * ux3(p));
+      {
+        dx1(p) += static_cast<float>(coeff * ux1(p) * inv_gamma);
+        auto temp_i { static_cast<int>(dx1(p)) };
+        auto temp_r { math::fmax(SIGNf(dx1(p)) + temp_i, static_cast<float>(temp_i)) -
+                      static_cast<float>(1.0) };
+        temp_i = static_cast<int>(temp_r);
+        i1(p)  = (i1(p) + temp_i + nx1) % nx1;
+        dx1(p) = dx1(p) - temp_r;
+      }
+
+      {
+        dx2(p)      += static_cast<float>(coeff * ux2(p) * inv_gamma);
+        auto temp_i  = static_cast<int>(dx2(p));
+        auto temp_r  = math::fmax(SIGNf(dx2(p)) + temp_i,
+                                 static_cast<float>(temp_i)) -
+                      static_cast<float>(1.0);
+        temp_i = static_cast<int>(temp_r);
+        i2(p)  = (i2(p) + temp_i + nx2) % nx2;
+        dx2(p) = dx2(p) - temp_r;
+      }
+      if (i1(p) >= nx1 || i1(p) < 0) {
+        throw std::runtime_error("ERROR i1" + std::to_string(i1(p)));
+      }
+      if (i2(p) >= nx2 || i2(p) < 0) {
+        throw std::runtime_error("ERROR i2" + std::to_string(i2(p)));
+      }
+    }
   }
 };
 
