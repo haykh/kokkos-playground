@@ -164,7 +164,7 @@ public:
 
   KOKKOS_INLINE_FUNCTION
   auto operator()(index_t p) const -> void {
-    if (tag(p) == static_cast<short>(tag::alive)) {
+    if (tag(p) == tag::alive) {
       {
         const auto i1_ = i1(p) + static_cast<int>(ngh);
         const auto i2_ = i2(p) + static_cast<int>(ngh);
@@ -269,6 +269,29 @@ public:
     }
   }
 };
+
+template <class KeyViewType>
+struct BinTag {
+  BinTag(const int& max_bins) : m_max_bins { max_bins } {}
+
+  template <class ViewType>
+  KOKKOS_INLINE_FUNCTION auto bin(ViewType& keys, const int& i) const -> int {
+    return (keys(i) == 0) ? 1 : ((keys(i) == 1) ? 0 : keys(i));
+  }
+
+  KOKKOS_INLINE_FUNCTION auto max_bins() const -> int {
+    return m_max_bins;
+  }
+
+  template <class ViewType, typename iT1, typename iT2>
+  KOKKOS_INLINE_FUNCTION auto operator()(ViewType&, iT1&, iT2&) const -> bool {
+    return false;
+  }
+
+private:
+  const int m_max_bins;
+};
+
 
 auto Playground() -> void;
 

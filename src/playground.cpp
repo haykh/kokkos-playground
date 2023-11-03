@@ -4,6 +4,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
+#include <Kokkos_Sort.hpp>
 #include <stdio.h>
 
 #include <iostream>
@@ -31,12 +32,17 @@ auto countNdead(Kokkos::View<short*> tag, std::size_t npart, std::size_t maxnpar
   return { ndead_1_h(), ndead_2_h() };
 }
 
+void printNdead(Kokkos::View<short*> tag, std::size_t npart, std::size_t maxnpart) {
+  auto [nd1, nd2] = countNdead(tag, npart, maxnpart);
+  printf("\tNpart = %ld\n\tndead1 = %ld\n\tndead2 = %ld\n", npart, nd1, nd2);
+}
+
 auto Playground() -> void {
   auto random_pool = RandomNumberPool_t(RandomSeed);
 
   constexpr std::size_t ngh      = 2;
-  const std::size_t     npart    = (std::size_t)(1e5);
-  const std::size_t     maxnpart = (std::size_t)(1e6);
+  std::size_t     npart    = (std::size_t)(8e4);
+  const std::size_t     maxnpart = (std::size_t)(1e5);
   const std::size_t     nx1 = 500, nx2 = 500;
 
   Kokkos::View<int*>   i1("i1", maxnpart);
@@ -64,14 +70,32 @@ auto Playground() -> void {
     npart,
     InitPrtls_kernel(i1, i2, dx1, dx2, ux1, ux2, ux3, tag, nx1, nx2, random_pool));
 
-  {
-    auto [nd1, nd2] = countNdead(tag, npart, maxnpart);
-    printf("Dead < npart : npart=%ld dead=%ld %%=%f",
-           npart,
-           nd1,
-           100.0 * (double)dead / (double)npart);
-    // std::cout << "Dead < npart:" << dead << " " << npart
-  }
+  timer(
+    [&]() {
+      Kokkos::parallel_for(
+        "push_p",
+        npart,
+        Push_kernel(ngh, coeff, fld, i1, i2, dx1, dx2, ux1, ux2, ux3, tag, nx1, nx2));
+    },
+    "push_p",
+    100)();
+
+  timer(
+    [&]() {
+      Kokkos::parallel_for(
+        "kill_p",
+        npart,
+        KOKKOS_LAMBDA(index_t p) {
+          RandomGenerator_t rand_gen = random_pool.get_state();
+          if (rand_gen.frand() < 0.1) {
+            tag(p) = tag::dead;
+          }
+          random_pool.free_state(rand_gen);
+        });
+    },
+    "kill_p")();
+
+  printNdead(tag, npart, maxnpart);
 
   timer(
     [&]() {
@@ -81,22 +105,43 @@ auto Playground() -> void {
         Push_kernel(ngh, coeff, fld, i1, i2, dx1, dx2, ux1, ux2, ux3, tag, nx1, nx2));
     },
     "push_p",
-    10)();
+    100)();
+
+  timer(
+    [&]() {
+      auto slice = std::pair<std::size_t, std::size_t>({0, npart});
+      using KeyType = Kokkos::View<short*>;
+      using BinOp = BinTag<KeyType>;
+      BinOp bin_up(2);
+      Kokkos::BinSort<KeyType, BinOp> Sorter(Kokkos::subview(tag, slice), bin_up, false);
+      Sorter.create_permute_vector();
+      Sorter.sort(Kokkos::subview(i1, slice));
+      Sorter.sort(Kokkos::subview(i2, slice));
+      Sorter.sort(Kokkos::subview(dx1, slice));
+      Sorter.sort(Kokkos::subview(dx2, slice));
+      Sorter.sort(Kokkos::subview(ux1, slice));
+      Sorter.sort(Kokkos::subview(ux2, slice));
+      Sorter.sort(Kokkos::subview(ux3, slice));
+      Sorter.sort(Kokkos::subview(tag, slice));
+      auto [nd1, nd2] = countNdead(tag, npart, maxnpart);
+      npart -= nd1;
+    },
+    "sort_p",
+    1)();
+
+  printNdead(tag, npart, maxnpart);
 
   timer(
     [&]() {
       Kokkos::parallel_for(
-        "kill_p",
+        "push_p",
         npart,
-        KOKKOS_LAMBDA(index_t p) {
-          RandomGenerator_t rand_gen = random_pool.get_state();
-          if (rand_gen.frand() < 0.05) {
-            tag(p) = tag::dead;
-          }
-          random_pool.free_state(rand_gen);
-        });
+        Push_kernel(ngh, coeff, fld, i1, i2, dx1, dx2, ux1, ux2, ux3, tag, nx1, nx2));
     },
-    "kill_p")();
+    "push_p",
+    100)();
+
+  printNdead(tag, npart, maxnpart);
 
   timer(
     [&]() {
@@ -105,8 +150,9 @@ auto Playground() -> void {
         "energy_p",
         npart,
         KOKKOS_LAMBDA(index_t p, real_t & nrg) {
-          nrg += math::sqrt(
-            1.0f + ux1(p) * ux1(p) + ux2(p) * ux2(p) + ux3(p) * ux3(p));
+          if (tag(p) == tag::alive) {
+            nrg += math::sqrt(1.0f + ux1(p) * ux1(p) + ux2(p) * ux2(p) + ux3(p) * ux3(p));
+          }
         },
         energy);
       std::cout << "energy: " << energy << std::endl;
