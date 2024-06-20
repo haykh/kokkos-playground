@@ -12,6 +12,11 @@ if(${Kokkos_ENABLE_HIP})
 endif()
 
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/extern/Kokkos extern/Kokkos)
+# set(Kokkos_SRC ${CMAKE_CURRENT_SOURCE_DIR}/extern/Kokkos CACHE PATH "Path to Kokkos src")
+# set(Kokkos_BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build/extern/Kokkos CACHE PATH "Path to Kokkos build")
+
 # find_package(Kokkos REQUIRED)
 
 include(FetchContent)
