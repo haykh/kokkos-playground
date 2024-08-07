@@ -3,12 +3,13 @@ project(Kokkos-Adios2-MPI-Boilerplate LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(${Kokkos_ENABLE_CUDA})
-  enable_language(CUDA)
-endif()
-
 set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Kokkos REQUIRED)
+
+if(${Kokkos_ENABLE_CUDA})
+  enable_language(CUDA)
+  add_compile_options("-D CUDA_ENABLED")
+endif()
 
 if(${adios2})
   find_package(adios2 REQUIRED)

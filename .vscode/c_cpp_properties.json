@@ -9,7 +9,8 @@
     "myDefaultDefines": [
       "MPI_ENABLED",
       "ADIOS2_ENABLED",
-      "ADIOS2_USE_MPI"
+      "ADIOS2_USE_MPI",
+      "CUDA_ENABLED"
     ]
   },
   "configurations": [
