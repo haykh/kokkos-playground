@@ -196,15 +196,14 @@ void Read(adios2::ADIOS&     adios,
   rdReader.Get(tagVar, tag.data());
 }
 
-void Playground(const std::string& action) {
+void Playground(const std::string& action, const std::string& engine) {
 #if defined(MPI_ENABLED)
   adios2::ADIOS adios(MPI_COMM_WORLD);
 #else
   adios2::ADIOS adios;
 #endif
 
-  const auto engine = "hdf5";
-  const auto fname  = "checkpoint.bp";
+  const auto fname = "checkpoint." + engine;
 
   if (action == "read") {
     Read(adios, fname, engine, 100, 20, 1000);

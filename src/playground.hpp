@@ -3,6 +3,6 @@
 
 #include <string>
 
-void Playground(const std::string&);
+void Playground(const std::string&, const std::string&);
 
 #endif // PLAYGROUND_HPP
