@@ -11,13 +11,27 @@
   #include <mpi.h>
 #endif
 
+#include <string>
+
 auto Initialize(int argc, char* argv[]) -> void;
 auto Finalize() -> void;
+
+void help(const std::string& name) {
+  std::cerr << "Usage: " << name << " [read|write]\n";
+  throw std::invalid_argument("Invalid arguments");
+}
 
 auto main(int argc, char* argv[]) -> int {
   Initialize(argc, argv);
   try {
-    Playground();
+    if (argc != 2) {
+      help(argv[0]);
+    }
+    const auto action = std::string(argv[1]);
+    if (action != "read" && action != "write") {
+      help(argv[0]);
+    }
+    Playground(action);
   } catch (std::exception& e) {
     std::cerr << "Exception caught: " << e.what() << '\n';
     Finalize();

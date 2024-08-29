@@ -1,6 +1,8 @@
 #ifndef PLAYGROUND_HPP
 #define PLAYGROUND_HPP
 
-auto Playground() -> void;
+#include <string>
+
+void Playground(const std::string&);
 
 #endif // PLAYGROUND_HPP

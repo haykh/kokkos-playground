@@ -11,5 +11,5 @@ endif()
 
 if(${mpi})
   target_link_libraries(main.xc MPI::MPI_CXX)
-  target_include_directories(main.xc PUBLIC ${MPI_CXX_INCLUDE_PATH})
+  # target_include_directories(main.xc PUBLIC ${MPI_CXX_INCLUDE_PATH})
 endif()
