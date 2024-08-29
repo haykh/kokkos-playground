@@ -4,15 +4,30 @@
 
 #ifdef ADIOS2_ENABLED
   #include <adios2.h>
-  #include <adios2/cxx11/KokkosView.h>
 #endif
 
 #ifdef MPI_ENABLED
   #include <mpi.h>
 #endif
 
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <utility>
+#include <vector>
+
+#if SIZE_MAX == UCHAR_MAX
+  #define MPI_SIZE_T MPI_UNSIGNED_CHAR
+#elif SIZE_MAX == USHRT_MAX
+  #define MPI_SIZE_T MPI_UNSIGNED_SHORT
+#elif SIZE_MAX == UINT_MAX
+  #define MPI_SIZE_T MPI_UNSIGNED
+#elif SIZE_MAX == ULONG_MAX
+  #define MPI_SIZE_T MPI_UNSIGNED_LONG
+#elif SIZE_MAX == ULLONG_MAX
+  #define MPI_SIZE_T MPI_UNSIGNED_LONG_LONG
+#endif
 
 void Write(adios2::ADIOS&            adios,
            const std::string&        fname,
@@ -24,9 +39,9 @@ void Write(adios2::ADIOS&            adios,
   std::vector<std::size_t> g_shape;
   std::vector<std::size_t> l_corner;
   std::vector<std::size_t> l_shape;
-  std::size_t              g_npart;
-  std::size_t              l_shiftnpart;
-  std::size_t              l_npart = npart;
+  std::size_t              g_npart      = 0;
+  std::size_t              l_shiftnpart = 0;
+  std::size_t              l_npart      = npart;
 #if defined(MPI_ENABLED)
   int mpi_rank, mpi_size;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
@@ -44,14 +59,8 @@ void Write(adios2::ADIOS&            adios,
   l_corner.push_back(0);
   l_shape.push_back(6);
 
-  std::vector<std::size_t> nparts(mpi_size);
-  MPI_Allgather(&l_npart,
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                nparts.data(),
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                MPI_COMM_WORLD);
+  std::size_t* nparts = new std::size_t[mpi_size];
+  MPI_Allgather(&l_npart, 1, MPI_SIZE_T, nparts, 1, MPI_SIZE_T, MPI_COMM_WORLD);
 
   for (auto i { 0 }; i < mpi_size; ++i) {
     if (i < mpi_rank) {
@@ -59,6 +68,7 @@ void Write(adios2::ADIOS&            adios,
     }
     g_npart += nparts[i];
   }
+  delete[] nparts;
 
 #else
   int mpi_rank = 0, mpi_size = 1;
@@ -96,20 +106,30 @@ void Write(adios2::ADIOS&            adios,
 
   wrtWriter.BeginStep();
 
-  wrtWriter.Put(emVar, em.data());
+  auto em_h = Kokkos::create_mirror_view(em);
+  Kokkos::deep_copy(em_h, em);
+  wrtWriter.Put(emVar, em_h.data());
 
   npartVar.SetShape({ static_cast<std::size_t>(mpi_size) });
   npartVar.SetSelection(
     adios2::Box<adios2::Dims>({ static_cast<std::size_t>(mpi_rank) }, { 1 }));
   wrtWriter.Put(npartVar, &l_npart);
 
+  const auto slice = std::pair<std::size_t, std::size_t> { 0, l_npart };
+
   IVar.SetShape({ g_npart });
   IVar.SetSelection(adios2::Box<adios2::Dims>({ l_shiftnpart }, { l_npart }));
-  wrtWriter.Put(IVar, I.data());
+  auto I_h = Kokkos::create_mirror_view(I);
+  Kokkos::deep_copy(I_h, I);
+  auto I_sub = Kokkos::subview(I_h, slice);
+  wrtWriter.Put(IVar, I_sub.data());
 
   tagVar.SetShape({ g_npart });
   tagVar.SetSelection(adios2::Box<adios2::Dims>({ l_shiftnpart }, { l_npart }));
-  wrtWriter.Put(tagVar, tag.data());
+  auto tag_h = Kokkos::create_mirror_view(tag);
+  Kokkos::deep_copy(tag_h, tag);
+  auto tag_sub = Kokkos::subview(tag_h, slice);
+  wrtWriter.Put(tagVar, tag_sub.data());
 
   wrtWriter.EndStep();
 
@@ -153,47 +173,70 @@ void Read(adios2::ADIOS&     adios,
   Kokkos::View<float** [6]> em("em", nx, ny);
   Kokkos::View<int*>        I("I", maxnpart);
   Kokkos::View<short*>      tag("tag", maxnpart);
-  std::size_t               npart;
 
   adios2::IO rdIO = adios.DeclareIO("ReadIO");
   rdIO.SetEngine(engine);
 
   adios2::Engine rdReader = rdIO.Open(fname, adios2::Mode::Read);
+  rdReader.BeginStep();
 
   auto emVar = rdIO.InquireVariable<float>("em");
   emVar.SetSelection(sel_em);
-  rdReader.Get(emVar, em.data());
+  auto em_h = Kokkos::create_mirror_view(em);
+  rdReader.Get(emVar, em_h.data());
+  Kokkos::deep_copy(em, em_h);
 
-  auto npartVar = rdIO.InquireVariable<std::size_t>("npart");
-  npartVar.SetSelection(
-    adios2::Box<adios2::Dims> { { static_cast<std::size_t>(mpi_rank) }, { 1 } });
-  rdReader.Get(npartVar, &npart);
+  // THIS SHOULD BE READ FROM THE FILE (CURRENTLY HARDCODED)
+  // std::size_t npart;
+  // auto        npartVar = rdIO.InquireVariable<std::size_t>("npart");
+  // npartVar.SetSelection(
+  //   adios2::Box<adios2::Dims>({ static_cast<std::size_t>(mpi_rank) }, { 1 }));
+  // rdReader.Get(npartVar, &npart);
+  std::size_t npart = 256;
 
-  std::size_t l_shiftnpart;
-  std::size_t l_npart = npart;
+  std::size_t l_shiftnpart = 0;
+  std::size_t l_npart      = npart;
 #if defined(MPI_ENABLED)
-  std::vector<std::size_t> nparts(mpi_size);
-  MPI_Allgather(&l_npart,
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                nparts.data(),
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                MPI_COMM_WORLD);
+  std::size_t* nparts = new std::size_t[mpi_size];
+  MPI_Allgather(&l_npart, 1, MPI_SIZE_T, nparts, 1, MPI_SIZE_T, MPI_COMM_WORLD);
   for (auto i { 0 }; i < mpi_rank; ++i) {
     l_shiftnpart += nparts[i];
   }
+  delete[] nparts;
 #else
   l_shiftnpart = 0;
 #endif
 
+  const auto slice = std::pair<std::size_t, std::size_t> { 0, l_npart };
+  printf("Rank %d: npart = %lu l_shiftnpart = %lu\n", mpi_rank, l_npart, l_shiftnpart);
+
   auto IVar = rdIO.InquireVariable<int>("I");
-  IVar.SetSelection(adios2::Box<adios2::Dims> { { l_shiftnpart }, { l_npart } });
-  rdReader.Get(IVar, I.data());
+  IVar.SetSelection(adios2::Box<adios2::Dims>({ l_shiftnpart }, { l_npart }));
+  auto I_h = Kokkos::create_mirror_view(I);
+  rdReader.Get(IVar, Kokkos::subview(I_h, slice).data());
+  Kokkos::deep_copy(Kokkos::subview(I, slice), Kokkos::subview(I_h, slice));
 
   auto tagVar = rdIO.InquireVariable<short>("tag");
-  tagVar.SetSelection(adios2::Box<adios2::Dims> { { l_shiftnpart }, { l_npart } });
-  rdReader.Get(tagVar, tag.data());
+  tagVar.SetSelection(adios2::Box<adios2::Dims>({ l_shiftnpart }, { l_npart }));
+  auto tag_h = Kokkos::create_mirror_view(tag);
+  rdReader.Get(tagVar, Kokkos::subview(tag_h, slice).data());
+  Kokkos::deep_copy(Kokkos::subview(tag, slice), Kokkos::subview(tag_h, slice));
+
+  printf("Rank %d: em(0 0 0, 5 5 1, 10 1 5) = %f %f %f : I(0, 1, 2) = %d %d "
+         "%d : tag(0, 1, 2) = %d %d %d \n",
+         mpi_rank,
+         em_h(0, 0, 0),
+         em_h(5, 5, 1),
+         em_h(10, 1, 5),
+         I_h(0),
+         I_h(1),
+         I_h(2),
+         tag_h(0),
+         tag_h(1),
+         tag_h(2));
+
+  rdReader.EndStep();
+  rdReader.Close();
 }
 
 void Playground(const std::string& action, const std::string& engine) {
@@ -215,7 +258,16 @@ void Playground(const std::string& action, const std::string& engine) {
     const std::size_t         npart = 256;
 
     Kokkos::parallel_for(
-      "Init",
+      "InitEM",
+      Kokkos::MDRangePolicy<Kokkos::Rank<2>>({ 0, 0 }, { 100, 20 }),
+      KOKKOS_LAMBDA(std::size_t i, std::size_t j) {
+        em(i, j, 0) = (i * 20 + j) + 2000;
+        em(i, j, 1) = (i * 20 + j) + 5000;
+        em(i, j, 5) = (i * 20 + j) + 8000;
+      });
+
+    Kokkos::parallel_for(
+      "InitP",
       npart,
       KOKKOS_LAMBDA(std::size_t p) {
         I(p)   = p;
