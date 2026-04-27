@@ -38,3 +38,4 @@ bin/
 .vscode/settings.json
 
 *.h5
+.cache

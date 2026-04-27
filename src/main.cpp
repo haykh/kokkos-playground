@@ -2,6 +2,8 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <iostream>
+
 #ifdef ADIOS2_ENABLED
   #include <adios2.h>
   #include <adios2/cxx11/KokkosView.h>
